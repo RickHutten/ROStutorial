@@ -1,37 +1,48 @@
 #include <ros/ros.h>
 #include <tf/transform_broadcaster.h>
-#include "geometry_msgs/TransformStamped.h"
 #include <string>
+#include </usr/include/boost/thread.hpp>
+
+//#include <mutex>
+
+#include "geometry_msgs/TransformStamped.h"
 
 struct terminos; // Define struct to save and set terminal settings
 
 class PublishBase {
 public:
     PublishBase();
-    void loop();
+    void inputLoop();
+    void broadcastLoop();
 
 private:
-    void getAnswer();
-    void parseAnswer();
+    std::string getAnswer();
+    void parseAnswer(std::string);
 
     ros::NodeHandle node;
     ros::Publisher pub;
     tf::TransformBroadcaster broadcaster;
-    std::string answer;
-    std::string parsedAnswer[6];
+    float parsedAnswer[6];
+    //std::mutex mutex;
 };
 
 PublishBase::PublishBase() {
     pub = node.advertise<geometry_msgs::TransformStamped>("world/base_tf_enu", 1000);
-    this->getAnswer();
 }
 
-void PublishBase::loop() {
+
+void PublishBase::inputLoop() {
+    while(ros::ok()) {
+        std::string answer = this->getAnswer();
+        std::cout << "parsing" << std::endl;
+        this->parseAnswer(answer);
+    }
+}
+
+void PublishBase::broadcastLoop() {
 
     ros::Rate rate(1);
-
-    while(ros::ok())
-    {
+    while(ros::ok()) {
         // Create message
         geometry_msgs::TransformStamped msg;
         msg.header.stamp = ros::Time::now();
@@ -41,43 +52,41 @@ void PublishBase::loop() {
         msg.transform.translation.y = 1;
         msg.transform.translation.z = 0;
 
-        // Publish transform over tf
-        //broadcaster.sendTransform(msg);
-
-        // Publish over ROS
-        pub.publish(msg);
-
-        ROS_INFO("SENDING TRANSFORM");
-
+        this->broadcaster.sendTransform(msg);
         rate.sleep();
     }
-};
-
-void PublishBase::getAnswer() {
-    std::cout << "x,y,z,roll,pitch,yaw:" << std::endl;
-    std::cin >> answer;
-    ROS_INFO("Your answer: %s", answer);
 }
 
-void PublishBase::parseAnswer() {
-    std::string delimiter = ",";
 
+std::string PublishBase::getAnswer() {
+    std::string answer;
+    std::cout << "x,y,z,roll,pitch,yaw:" << std::endl;
+    std::cin >> answer;
+    return answer;
+}
+
+void PublishBase::parseAnswer(std::string answer) {
     int pos = 0;
     int count = 0;
     std::string token;
-    while ((pos = this->answer.find(delimiter)) != std::string::npos) {
+    std::string delimiter = ",";
+    while ((pos = answer.find(delimiter)) != std::string::npos) {
         token = answer.substr(0, pos);
         std::cout << token << std::endl;
         answer.erase(0, pos + delimiter.length());
-        parsedAnswer[count] = token;
+        std::istringstream(token) >> this->parsedAnswer[count];
         count++;
     }
+
+    std::cout << "Parsed answer " << this->parsedAnswer[0] << " " << this->parsedAnswer[1] << " " << this->parsedAnswer[2] << " " << this->parsedAnswer[3] << " " << this->parsedAnswer[4] << " " << this->parsedAnswer[5] << std::endl;
 }
 
 int main(int argc, char** argv) {
     ros::init(argc, argv, "tf_publisher_base");
 
     PublishBase publishBase;
-    publishBase.loop();
-
+    
+    // Start both input and broadcast loop
+    boost::thread inputThread(&PublishBase::inputLoop, &publishBase);
+    publishBase.broadcastLoop();    
 }
