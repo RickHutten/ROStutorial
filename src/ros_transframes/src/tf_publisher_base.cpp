@@ -1,13 +1,10 @@
 #include <ros/ros.h>
 #include <tf/transform_broadcaster.h>
-#include <string>
 #include </usr/include/boost/thread.hpp>
-
-//#include <mutex>
+#include </usr/include/boost/algorithm/string.hpp>
 
 #include "geometry_msgs/TransformStamped.h"
 
-struct terminos; // Define struct to save and set terminal settings
 
 class PublishBase {
 public:
@@ -20,65 +17,80 @@ private:
     void parseAnswer(std::string);
 
     ros::NodeHandle node;
-    ros::Publisher pub;
+    float parsedAnswer[6] = {0};
     tf::TransformBroadcaster broadcaster;
-    float parsedAnswer[6];
-    //std::mutex mutex;
 };
 
 PublishBase::PublishBase() {
-    pub = node.advertise<geometry_msgs::TransformStamped>("world/base_tf_enu", 1000);
+    // Start both input and broadcast loop
+    boost::thread inputThread(&PublishBase::inputLoop, this);
+    this->broadcastLoop(); 
 }
-
 
 void PublishBase::inputLoop() {
     while(ros::ok()) {
         std::string answer = this->getAnswer();
-        std::cout << "parsing" << std::endl;
         this->parseAnswer(answer);
     }
 }
 
 void PublishBase::broadcastLoop() {
-
     ros::Rate rate(1);
     while(ros::ok()) {
-        // Create message
-        geometry_msgs::TransformStamped msg;
-        msg.header.stamp = ros::Time::now();
-        msg.header.frame_id = "test";
-        msg.child_frame_id = "test2";
-        msg.transform.translation.x = 0;
-        msg.transform.translation.y = 1;
-        msg.transform.translation.z = 0;
+        tf::Transform transform;
 
-        this->broadcaster.sendTransform(msg);
+        // Set position
+        transform.setOrigin(
+            tf::Vector3(
+                this->parsedAnswer[0], 
+                this->parsedAnswer[1], 
+                this->parsedAnswer[2]
+            ) 
+        );
+
+        // Set rotation
+        tf::Quaternion quaternion;
+        quaternion.setRPY(
+            this->parsedAnswer[3], 
+            this->parsedAnswer[4], 
+            this->parsedAnswer[5] 
+        );
+        transform.setRotation(quaternion);
+
+        this->broadcaster.sendTransform(
+            tf::StampedTransform(transform, ros::Time::now(), "world", "world/base_tf_enu")
+        );
+
         rate.sleep();
     }
 }
 
-
 std::string PublishBase::getAnswer() {
     std::string answer;
     std::cout << "x,y,z,roll,pitch,yaw:" << std::endl;
-    std::cin >> answer;
+    std::getline(std::cin, answer);
     return answer;
 }
 
 void PublishBase::parseAnswer(std::string answer) {
-    int pos = 0;
-    int count = 0;
-    std::string token;
-    std::string delimiter = ",";
-    while ((pos = answer.find(delimiter)) != std::string::npos) {
-        token = answer.substr(0, pos);
-        std::cout << token << std::endl;
-        answer.erase(0, pos + delimiter.length());
-        std::istringstream(token) >> this->parsedAnswer[count];
-        count++;
+    std::vector<std::string> split;
+    boost::split(split, answer, boost::is_any_of(","));
+    
+    // Check if the answer contains exactly 6 arguments
+    if (split.size() != 6) {
+        std::cout << "Not the correct amount of inputs" << std::endl;
+        return;
     }
 
-    std::cout << "Parsed answer " << this->parsedAnswer[0] << " " << this->parsedAnswer[1] << " " << this->parsedAnswer[2] << " " << this->parsedAnswer[3] << " " << this->parsedAnswer[4] << " " << this->parsedAnswer[5] << std::endl;
+    int i;
+    for (i = 0; i < 6; i ++) {
+        // Try to parse answer, else input zero
+        try{
+            std::istringstream(split[i]) >> this->parsedAnswer[i];
+        } catch(...) {
+            this->parsedAnswer[i] = 0;
+        }
+    }
 }
 
 int main(int argc, char** argv) {
@@ -86,7 +98,5 @@ int main(int argc, char** argv) {
 
     PublishBase publishBase;
     
-    // Start both input and broadcast loop
-    boost::thread inputThread(&PublishBase::inputLoop, &publishBase);
-    publishBase.broadcastLoop();    
+    return 0;  
 }
