@@ -1,7 +1,7 @@
 #include <ros/ros.h>
 #include <tf/transform_broadcaster.h>
-#include </usr/include/boost/thread.hpp>
-#include </usr/include/boost/algorithm/string.hpp>
+#include <boost/thread.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "geometry_msgs/TransformStamped.h"
 
